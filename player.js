@@ -153,6 +153,7 @@ class Player {
       this.footstepTimer -= dt;
       if (this.footstepTimer <= 0){
         AudioEngine.playFootstep();
+        this.spawnDustPuff = true;
         this.footstepTimer = this.state === 'run' ? 0.22 : 0.34;
       }
     }

@@ -142,6 +142,10 @@ const Game = {
       this.particles.spawnBurst(player.cx, player.y+player.h, {count:6, color:'#fff', shape:'circle', speed:80, life:0.4, upBias:20});
       player.spawnJumpSparkle = false;
     }
+    if (player.spawnDustPuff){
+      this.particles.spawnBurst(player.cx - player.facing*8, player.y+player.h-2, {count:3, color:'#e8d4b8', shape:'circle', speed:40, life:0.3, upBias:-10, gravity:60, size:3});
+      player.spawnDustPuff = false;
+    }
 
     // fell into a gap -> lose a heart & respawn
     if (player.y > WORLD.GRAVITY_FLOOR){

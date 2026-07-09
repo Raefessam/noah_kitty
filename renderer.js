@@ -18,15 +18,49 @@ const Renderer = {
   init(canvas){
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d');
+    this.container = canvas.parentElement || document.body;
     this.resize();
+
+    // Plain resize still matters (e.g. desktop window drag).
     window.addEventListener('resize', ()=>this.resize());
+
+    // ResizeObserver reacts to the *actual* container box changing size,
+    // which is more reliable than the 'resize' event alone on iOS Safari
+    // (the event can fire before Safari finishes settling the new
+    // viewport height/width after a rotation).
+    if (window.ResizeObserver){
+      this._ro = new ResizeObserver(()=> this.resize());
+      this._ro.observe(this.container);
+    }
+
+    // iOS Safari continues to adjust its chrome (address/tab bars) for a
+    // few hundred ms after 'orientationchange' fires, so a single
+    // immediate resize can capture a stale/incorrect height. Re-measure
+    // a few times as things settle.
+    window.addEventListener('orientationchange', ()=>{
+      [50, 150, 300, 500, 800].forEach(delay=>{
+        setTimeout(()=>this.resize(), delay);
+      });
+    });
+
+    // visualViewport reports the true usable area on iOS (excludes the
+    // browser UI overlay) and fires its own resize/scroll events as the
+    // address bar shows/hides — the most accurate signal available.
+    if (window.visualViewport){
+      window.visualViewport.addEventListener('resize', ()=>this.resize());
+    }
   },
 
   resize(){
     this.dpr = Math.min(window.devicePixelRatio || 1, 2);
-    const w = window.innerWidth, h = window.innerHeight;
+    const vv = window.visualViewport;
+    const w = Math.round(vv ? vv.width : window.innerWidth);
+    const h = Math.round(vv ? vv.height : window.innerHeight);
+    if (w === 0 || h === 0) return; // ignore transient zero-size measurements mid-rotation
     this.canvas.width = w * this.dpr;
     this.canvas.height = h * this.dpr;
+    this.canvas.style.width = w + 'px';
+    this.canvas.style.height = h + 'px';
     this.viewW = w; this.viewH = h;
   },
 
@@ -360,30 +394,61 @@ const Renderer = {
     ctx.translate(x, y);
     ctx.scale(p.facing, 1);
 
-    const bob = (p.state==='walk' || p.state==='run') ? Math.sin(this.time*(p.state==='run'?16:10))*3 : 0;
-    const stretchY = p.squash;
+    const bob = (p.state==='walk' || p.state==='run') ? Math.abs(Math.sin(this.time*(p.state==='run'?16:10))) * (p.state==='run'?4:2) : 0;
+    const breathe = (p.state==='idle') ? Math.sin(this.time*1.6)*0.02 : 0;
+    const stretchY = p.squash + breathe;
     const stretchX = 1/Math.max(0.6,p.squash) * 0.5 + 0.5;
 
-    ctx.translate(0, bob);
+    // a light forward lean while sprinting sells the "run" feeling
+    const lean = p.state==='run' ? -0.12 : p.state==='walk' ? -0.04 : 0;
+
+    ctx.translate(0, -bob);
+    ctx.rotate(lean);
     ctx.scale(stretchX, stretchY);
 
     const flash = (p.invulnerable>0 && Math.floor(this.time*14)%2===0);
     ctx.globalAlpha = flash ? 0.5 : 1;
 
-    // tail
-    const tailWag = Math.sin(p.tailPhase)*0.5;
+    // ---- gait cycle (diagonal-pair quadruped walk, like a real cat) ----
+    const gaitSpeed = p.state==='run' ? 16 : p.state==='walk' ? 9 : 0;
+    const gaitPhase = this.time * gaitSpeed;
+    const liftAmt = p.state==='run' ? 7 : p.state==='walk' ? 3.5 : 0;
+    const grounded = (p.state==='walk' || p.state==='run' || p.state==='idle' || p.state==='land');
+
+    const backLift1 = grounded ? Math.max(0, Math.sin(gaitPhase)) * liftAmt : 0;
+    const backLift2 = grounded ? Math.max(0, Math.sin(gaitPhase+Math.PI)) * liftAmt : 0;
+    const frontLift1 = grounded ? Math.max(0, Math.sin(gaitPhase+Math.PI*0.5)) * liftAmt : 0;
+    const frontLift2 = grounded ? Math.max(0, Math.sin(gaitPhase+Math.PI*1.5)) * liftAmt : 0;
+
+    // ---- tail: smooth curved swish, streams out behind while running ----
+    const tailWag = Math.sin(p.tailPhase)*0.45;
+    const tailBase = p.state==='run' ? -0.25 : p.state==='celebrate' ? -0.9 : 0.55;
     ctx.save();
-    ctx.translate(-16,-20);
-    ctx.rotate(0.6+tailWag*0.4);
-    ctx.fillStyle = '#f5a856';
-    roundRect(ctx,-4,-30,8,30,4); ctx.fill();
+    ctx.translate(-15,-22);
+    ctx.rotate(tailBase + tailWag*0.5);
+    ctx.strokeStyle = '#f5a856';
+    ctx.lineWidth = 8; ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(0,0);
+    ctx.quadraticCurveTo(-6, -18, tailWag*10-2, -32);
+    ctx.stroke();
+    ctx.fillStyle = '#fff3e2';
+    ctx.beginPath(); ctx.arc(tailWag*10-2,-32,3.6,0,Math.PI*2); ctx.fill();
     ctx.restore();
 
-    // back legs
+    // ---- back legs ----
     ctx.fillStyle = '#f2984a';
-    const legLift = (p.state==='run') ? Math.abs(Math.sin(this.time*16))*6 : (p.state==='walk'? Math.abs(Math.sin(this.time*10))*3 : 0);
-    roundRect(ctx, -12, -16+legLift*0, 8, 16, 4); ctx.fill();
-    roundRect(ctx, 4, -16-legLift*0, 8, 16, 4); ctx.fill();
+    if (p.state==='jump'){
+      // tucked up under the body for a springy takeoff pose
+      ctx.save(); ctx.translate(-12,-14); ctx.rotate(-0.6); roundRect(ctx,-4,-4,8,12,4); ctx.fill(); ctx.restore();
+      ctx.save(); ctx.translate(4,-14); ctx.rotate(0.6); roundRect(ctx,-4,-4,8,12,4); ctx.fill(); ctx.restore();
+    } else if (p.state==='fall'){
+      ctx.save(); ctx.translate(-12,-16); ctx.rotate(-0.2); roundRect(ctx,-4,0,8,15,4); ctx.fill(); ctx.restore();
+      ctx.save(); ctx.translate(4,-16); ctx.rotate(0.2); roundRect(ctx,-4,0,8,15,4); ctx.fill(); ctx.restore();
+    } else {
+      drawPaw(ctx, -12, -16-backLift1, 8, 16);
+      drawPaw(ctx, 4, -16-backLift2, 8, 16);
+    }
 
     // body
     ctx.fillStyle = '#f5a856';
@@ -403,26 +468,40 @@ const Renderer = {
       ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
     });
 
-    // front legs (jump pose extends them)
+    // ---- front legs ----
     ctx.fillStyle = '#f2984a';
-    const frontLegAngle = (p.state==='jump') ? -0.5 : (p.state==='fall') ? 0.3 : 0;
-    ctx.save(); ctx.translate(-14,-20); ctx.rotate(frontLegAngle);
-    roundRect(ctx,-4,0,8,18,4); ctx.fill(); ctx.restore();
-    ctx.save(); ctx.translate(12,-20); ctx.rotate(-frontLegAngle);
-    roundRect(ctx,-4,0,8,18,4); ctx.fill(); ctx.restore();
+    if (p.state==='jump'){
+      ctx.save(); ctx.translate(-14,-20); ctx.rotate(-0.75); roundRect(ctx,-4,0,8,16,4); ctx.fill(); ctx.restore();
+      ctx.save(); ctx.translate(12,-20); ctx.rotate(-0.35); roundRect(ctx,-4,0,8,16,4); ctx.fill(); ctx.restore();
+    } else if (p.state==='fall'){
+      ctx.save(); ctx.translate(-14,-20); ctx.rotate(0.35); roundRect(ctx,-4,0,8,18,4); ctx.fill(); ctx.restore();
+      ctx.save(); ctx.translate(12,-20); ctx.rotate(0.35); roundRect(ctx,-4,0,8,18,4); ctx.fill(); ctx.restore();
+    } else if (p.state==='celebrate'){
+      // little paws-up cheer, alternating like a happy wave
+      const wave = Math.sin(this.time*9);
+      ctx.save(); ctx.translate(-14,-24); ctx.rotate(-1.6 - wave*0.3); roundRect(ctx,-4,0,8,16,4); ctx.fill(); ctx.restore();
+      ctx.save(); ctx.translate(12,-24); ctx.rotate(1.6 + wave*0.3); roundRect(ctx,-4,0,8,16,4); ctx.fill(); ctx.restore();
+    } else {
+      drawPaw(ctx, -14, -20-frontLift1, 8, 18);
+      drawPaw(ctx, 12, -20-frontLift2, 8, 18);
+    }
 
     // head
     const headBob = p.state==='celebrate' ? Math.sin(this.time*10)*4 : 0;
+    const headTilt = p.state==='celebrate' ? Math.sin(this.time*6)*0.15 : p.state==='run' ? 0.06 : 0;
     ctx.save();
     ctx.translate(6, -46+headBob);
-    // ears
-    const earFlick = Math.sin(p.earPhase)*0.08;
+    ctx.rotate(headTilt);
+
+    // ears — perk up when jumping/celebrating, gentle idle flick otherwise
+    const earFlick = (p.state==='walk'||p.state==='idle') ? Math.sin(p.earPhase)*0.08 : 0;
+    const earPerk = (p.state==='jump' || p.state==='celebrate') ? -0.15 : 0;
     ctx.fillStyle = '#f5a856';
-    ctx.save(); ctx.rotate(-0.5+earFlick); roundRect(ctx,-14,-20,10,14,3); ctx.fill(); ctx.restore();
-    ctx.save(); ctx.rotate(0.5+earFlick); roundRect(ctx,4,-20,10,14,3); ctx.fill(); ctx.restore();
+    ctx.save(); ctx.rotate(-0.5+earFlick+earPerk); roundRect(ctx,-14,-20,10,14,3); ctx.fill(); ctx.restore();
+    ctx.save(); ctx.rotate(0.5+earFlick-earPerk); roundRect(ctx,4,-20,10,14,3); ctx.fill(); ctx.restore();
     ctx.fillStyle = '#ffc9d6';
-    ctx.save(); ctx.rotate(-0.5+earFlick); roundRect(ctx,-11.5,-17,5,8,2); ctx.fill(); ctx.restore();
-    ctx.save(); ctx.rotate(0.5+earFlick); roundRect(ctx,6.5,-17,5,8,2); ctx.fill(); ctx.restore();
+    ctx.save(); ctx.rotate(-0.5+earFlick+earPerk); roundRect(ctx,-11.5,-17,5,8,2); ctx.fill(); ctx.restore();
+    ctx.save(); ctx.rotate(0.5+earFlick-earPerk); roundRect(ctx,6.5,-17,5,8,2); ctx.fill(); ctx.restore();
 
     // head shape
     ctx.fillStyle = '#f5a856';
@@ -441,14 +520,19 @@ const Renderer = {
       [-6,8].forEach(ex=>{
         ctx.beginPath(); ctx.moveTo(ex-3,-2); ctx.lineTo(ex+3,4); ctx.moveTo(ex+3,-2); ctx.lineTo(ex-3,4); ctx.stroke();
       });
-    } else if (blinking){
+    } else if (blinking && p.state!=='celebrate'){
       ctx.strokeStyle='#3a2f42'; ctx.lineWidth=2;
       ctx.beginPath(); ctx.moveTo(-9,0); ctx.lineTo(-3,0); ctx.stroke();
       ctx.beginPath(); ctx.moveTo(5,0); ctx.lineTo(11,0); ctx.stroke();
+    } else if (p.state === 'celebrate'){
+      // happy closed "^ ^" eyes
+      ctx.strokeStyle='#3a2f42'; ctx.lineWidth=2.2; ctx.lineCap='round';
+      ctx.beginPath(); ctx.moveTo(-9,1); ctx.quadraticCurveTo(-6,-3,-3,1); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(5,1); ctx.quadraticCurveTo(8,-3,11,1); ctx.stroke();
     } else {
-      const eyeOpen = p.state === 'celebrate' ? -1 : 1;
-      ctx.beginPath(); ctx.ellipse(-6,0,3.2,3.6*eyeOpen,0,0,Math.PI*2); ctx.fill();
-      ctx.beginPath(); ctx.ellipse(8,0,3.2,3.6*eyeOpen,0,0,Math.PI*2); ctx.fill();
+      const eyeWide = (p.state==='jump' || p.state==='fall') ? 1.15 : 1;
+      ctx.beginPath(); ctx.ellipse(-6,0,3.2*eyeWide,3.6*eyeWide,0,0,Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(8,0,3.2*eyeWide,3.6*eyeWide,0,0,Math.PI*2); ctx.fill();
       ctx.fillStyle='#fff';
       ctx.beginPath(); ctx.arc(-5,-1,1,0,Math.PI*2); ctx.fill();
       ctx.beginPath(); ctx.arc(9,-1,1,0,Math.PI*2); ctx.fill();
@@ -457,22 +541,30 @@ const Renderer = {
     // nose + mouth
     ctx.fillStyle = '#ff8fa8';
     ctx.beginPath(); ctx.moveTo(-1,5); ctx.lineTo(3,5); ctx.lineTo(1,8); ctx.closePath(); ctx.fill();
-    ctx.strokeStyle = '#3a2f42'; ctx.lineWidth = 1.4;
-    ctx.beginPath();
-    ctx.moveTo(1,8); ctx.quadraticCurveTo(-2,11,-6,9);
-    ctx.moveTo(1,8); ctx.quadraticCurveTo(4,11,8,9);
-    ctx.stroke();
+    ctx.strokeStyle = '#3a2f42'; ctx.lineWidth = 1.4; ctx.lineCap='round';
+    if (p.state === 'celebrate'){
+      // big joyful open smile
+      ctx.beginPath();
+      ctx.moveTo(-7,8); ctx.quadraticCurveTo(1,15,9,8);
+      ctx.stroke();
+    } else {
+      ctx.beginPath();
+      ctx.moveTo(1,8); ctx.quadraticCurveTo(-2,11,-6,9);
+      ctx.moveTo(1,8); ctx.quadraticCurveTo(4,11,8,9);
+      ctx.stroke();
+    }
 
     // whiskers
     ctx.strokeStyle='rgba(58,47,66,0.5)'; ctx.lineWidth=1;
-    [[-2,-14],[0,-15],[2,-14]].forEach(([oy],i)=>{
-      ctx.beginPath(); ctx.moveTo(-8, 4+i*2); ctx.lineTo(-20, 2+i*3); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(14, 4+i*2); ctx.lineTo(26, 2+i*3); ctx.stroke();
-    });
+    for (let i=0;i<3;i++){
+      const wiggle = Math.sin(this.time*2 + i)*0.6;
+      ctx.beginPath(); ctx.moveTo(-8, 4+i*2); ctx.lineTo(-20, 2+i*3+wiggle); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(14, 4+i*2); ctx.lineTo(26, 2+i*3+wiggle); ctx.stroke();
+    }
 
     ctx.restore(); // head
 
-    ctx.restore(); // squash/bob
+    ctx.restore(); // squash/lean/bob
     ctx.restore(); // facing flip
   },
 
@@ -495,4 +587,16 @@ function roundRect(ctx, x, y, w, h, r){
   ctx.arcTo(x,y+h,x,y,r);
   ctx.arcTo(x,y,x+w,y,r);
   ctx.closePath();
+}
+
+/** A little leg with a rounded paw pad at the bottom — used for Luna's gait. */
+function drawPaw(ctx, x, y, w, h){
+  roundRect(ctx, x, y, w, h, 4);
+  ctx.fill();
+  ctx.save();
+  ctx.fillStyle = '#ffd9b3';
+  ctx.beginPath();
+  ctx.ellipse(x+w/2, y+h-2, w/2-0.5, 3.5, 0, 0, Math.PI*2);
+  ctx.fill();
+  ctx.restore();
 }
