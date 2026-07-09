@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>🐱 Noah's Kitty Adventure</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🐱</text></svg>">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div id="game-container">
+
+  <!-- ============ CANVAS ============ -->
+  <canvas id="game-canvas"></canvas>
+
+  <!-- ============ MAIN MENU ============ -->
+  <div id="screen-menu" class="screen active">
+    <div class="menu-bg">
+      <div class="cloud c1"></div>
+      <div class="cloud c2"></div>
+      <div class="cloud c3"></div>
+      <div class="sun"></div>
+    </div>
+    <div class="menu-card">
+      <h1 class="game-logo">
+        <span class="logo-icon">🐱</span>
+        <span class="logo-text">Noah's Kitty Adventure</span>
+      </h1>
+      <p class="game-subtitle">A magical journey with Luna the Kitten ✨</p>
+      <div class="menu-buttons">
+        <button class="btn btn-primary" id="btn-play">▶ Play</button>
+        <button class="btn btn-secondary" id="btn-howto">❓ How To Play</button>
+        <button class="btn btn-secondary" id="btn-settings">⚙ Settings</button>
+        <button class="btn btn-secondary" id="btn-credits">💛 Credits</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ LEVEL SELECT ============ -->
+  <div id="screen-levels" class="screen">
+    <div class="panel">
+      <h2>Choose a Level 🌟</h2>
+      <div id="level-grid" class="level-grid"></div>
+      <button class="btn btn-secondary" id="btn-levels-back">← Back</button>
+    </div>
+  </div>
+
+  <!-- ============ HOW TO PLAY ============ -->
+  <div id="screen-howto" class="screen">
+    <div class="panel">
+      <h2>How To Play 🎮</h2>
+      <div class="howto-grid">
+        <div class="howto-item"><div class="howto-icon">⬅➡</div><div>Move Luna left and right</div></div>
+        <div class="howto-item"><div class="howto-icon">⬆</div><div>Jump! Jump again in the air to double jump</div></div>
+        <div class="howto-item"><div class="howto-icon">🐟</div><div>Collect fish for points</div></div>
+        <div class="howto-item"><div class="howto-icon">⭐</div><div>Collect stars to earn medals</div></div>
+        <div class="howto-item"><div class="howto-icon">❤️</div><div>Collect hearts to heal Luna</div></div>
+        <div class="howto-item"><div class="howto-icon">🚩</div><div>Reach the flag to finish the level</div></div>
+      </div>
+      <button class="btn btn-secondary" id="btn-howto-back">← Back</button>
+    </div>
+  </div>
+
+  <!-- ============ SETTINGS ============ -->
+  <div id="screen-settings" class="screen">
+    <div class="panel">
+      <h2>Settings ⚙</h2>
+      <div class="settings-list">
+        <label class="setting-row"><span>🔊 Sound Effects</span><input type="checkbox" id="opt-sound" checked></label>
+        <label class="setting-row"><span>🎵 Music</span><input type="checkbox" id="opt-music" checked></label>
+        <label class="setting-row"><span>🔠 Large UI</span><input type="checkbox" id="opt-largeui"></label>
+        <label class="setting-row"><span>🌿 Reduce Motion</span><input type="checkbox" id="opt-reducemotion"></label>
+        <label class="setting-row"><span>🌍 Language</span>
+          <select id="opt-language">
+            <option value="en" selected>English</option>
+            <option value="ar">العربية (soon)</option>
+          </select>
+        </label>
+      </div>
+      <button class="btn btn-secondary" id="btn-settings-back">← Back</button>
+    </div>
+  </div>
+
+  <!-- ============ CREDITS ============ -->
+  <div id="screen-credits" class="screen">
+    <div class="panel">
+      <h2>Credits 💛</h2>
+      <div class="credits-text">
+        <p><strong>Noah's Kitty Adventure</strong></p>
+        <p>Made with love for Noah, age 5.</p>
+        <p>Starring Luna the Kitten 🐱</p>
+        <p>Built with pure HTML5, CSS3 &amp; JavaScript.</p>
+        <p>No plugins. No frameworks. Just imagination.</p>
+      </div>
+      <button class="btn btn-secondary" id="btn-credits-back">← Back</button>
+    </div>
+  </div>
+
+  <!-- ============ HUD (during gameplay) ============ -->
+  <div id="hud" class="hidden">
+    <div class="hud-card hud-left">
+      <div class="hud-stat"><span class="hud-icon">🐟</span><span id="hud-fish">0</span></div>
+      <div class="hud-stat"><span class="hud-icon">⭐</span><span id="hud-stars">0</span></div>
+      <div class="hud-stat"><span class="hud-icon">🏆</span><span id="hud-score">0</span></div>
+    </div>
+    <div class="hud-card hud-center">
+      <span id="hud-level">Level 1</span>
+    </div>
+    <div class="hud-card hud-right">
+      <div id="hud-hearts" class="hud-hearts"></div>
+      <button id="btn-pause" class="hud-btn" aria-label="Pause">⏸</button>
+    </div>
+  </div>
+
+  <!-- ============ MOBILE CONTROLS ============ -->
+  <div id="mobile-controls" class="hidden">
+    <div class="dpad">
+      <button id="btn-left" class="ctrl-btn" aria-label="Left">◀</button>
+      <button id="btn-right" class="ctrl-btn" aria-label="Right">▶</button>
+    </div>
+    <button id="btn-jump" class="ctrl-btn jump-btn" aria-label="Jump">⤴</button>
+  </div>
+
+  <!-- ============ PAUSE OVERLAY ============ -->
+  <div id="screen-pause" class="screen overlay">
+    <div class="panel small">
+      <h2>Paused ⏸</h2>
+      <div class="menu-buttons">
+        <button class="btn btn-primary" id="btn-resume">▶ Resume</button>
+        <button class="btn btn-secondary" id="btn-restart-level">🔄 Restart Level</button>
+        <button class="btn btn-secondary" id="btn-quit-menu">🏠 Main Menu</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ LEVEL COMPLETE ============ -->
+  <div id="screen-win" class="screen overlay">
+    <div class="panel small celebrate">
+      <h2>🎉 Level Complete! 🎉</h2>
+      <div class="win-stats">
+        <p>🐟 Fish: <span id="win-fish">0</span></p>
+        <p>⭐ Stars: <span id="win-stars">0</span></p>
+        <p id="win-medal-row">🏅 Medal: <span id="win-medal">Bronze</span></p>
+        <p>🏆 Score: <span id="win-score">0</span></p>
+      </div>
+      <div class="menu-buttons">
+        <button class="btn btn-primary" id="btn-next-level">Next Level ▶</button>
+        <button class="btn btn-secondary" id="btn-replay-level">🔄 Replay</button>
+        <button class="btn btn-secondary" id="btn-win-menu">🏠 Main Menu</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ GAME OVER ============ -->
+  <div id="screen-gameover" class="screen overlay">
+    <div class="panel small">
+      <h2>Aww, Luna is tired 😿</h2>
+      <p class="gameover-msg">Let's try again — you can do it!</p>
+      <div class="menu-buttons">
+        <button class="btn btn-primary" id="btn-continue">💗 Continue</button>
+        <button class="btn btn-secondary" id="btn-gameover-menu">🏠 Main Menu</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ ORIENTATION HINT ============ -->
+  <div id="rotate-hint" class="screen">
+    <div class="panel small">
+      <div style="font-size:48px;">📱↻</div>
+      <p>Please rotate your device to landscape for the best experience!</p>
+    </div>
+  </div>
+
+</div>
+
+<script src="physics.js"></script>
+<script src="audio.js"></script>
+<script src="particles.js"></script>
+<script src="input.js"></script>
+<script src="player.js"></script>
+<script src="world.js"></script>
+<script src="renderer.js"></script>
+<script src="ui.js"></script>
+<script src="game.js"></script>
+</body>
+</html>
